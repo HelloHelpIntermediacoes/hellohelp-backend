@@ -4,27 +4,26 @@
     "description": "Servidor backend da Hello Help",
     "type": "commonjs",
     "scripts": {
-  "start": "node index.js",
-  "dev": "nodemon index.js"
-},
+        "start": "node index.js",
+        "dev": "nodemon index.js"
+    },
     "dependencies": {
-      "@sendgrid/mail": "^8.1.5",
-      "@whiskeysockets/baileys": "^6.17.16",
-      "cheerio": "^1.0.0",
-      "cors": "^2.8.5",
-      "dotenv": "^16.5.0",
-      "express": "^4.21.2",
-      "firebase-admin": "^13.3.0",
-      "mercadopago": "^1.5.13",
-      "node-fetch": "^2.7.0",
-      "openai": "^4.92.1",
-      "pdfkit": "^0.17.0",
-      "uuid": "^11.1.0"
+        "@sendgrid/mail": "^8.1.5",
+        "@whiskeysockets/baileys": "^6.17.16",
+        "cheerio": "^1.0.0",
+        "cors": "^2.8.5",
+        "dotenv": "^16.5.0",
+        "express": "^4.21.2",
+        "firebase-admin": "^13.3.0",
+        "mercadopago": "^2.5.0",
+        "node-fetch": "^2.7.0",
+        "openai": "^4.96.0",
+        "pdfkit": "^0.17.0",
+        "uuid": "^11.1.0"
     },
     "devDependencies": {
-      "nodemon": "^3.1.9"
+        "nodemon": "^3.1.9"
     },
     "author": "Hello Help",
     "license": "MIT"
-  }
-  
+}
