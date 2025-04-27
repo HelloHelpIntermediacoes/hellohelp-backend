@@ -218,7 +218,12 @@ app.post("/api/pagamento-aprovado", verificarAssinaturaMercadoPago, async (req, 
   }
 });
 
+// ✅ ADIÇÃO FINAL PARA O RENDER FUNCIONAR
+app.get("/", (req, res) => {
+  res.send("✅ API Hello Help online!");
+});
+
 // 🚀 Inicializa o servidor
 app.listen(PORT, () => {
-  console.log(`✅ Backend Hello Help rodando em http://localhost:${PORT}`);
+  console.log(`✅ Backend Hello Help rodando na porta ${PORT}`);
 });
