@@ -4,8 +4,9 @@
     "description": "Servidor backend da Hello Help",
     "type": "commonjs",
     "scripts": {
-      "dev": "nodemon server.js"
-    },
+  "start": "node index.js",
+  "dev": "nodemon index.js"
+},
     "dependencies": {
       "@sendgrid/mail": "^8.1.5",
       "@whiskeysockets/baileys": "^6.17.16",
