@@ -1,3 +1,5 @@
+// index.js
+
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -7,10 +9,13 @@ import fetch from "node-fetch";
 import crypto from "crypto";
 import admin from "firebase-admin";
 import mercadopago from "mercadopago";
+import { makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } from '@whiskeysockets/baileys';
+import fs from "fs";
+import path from "path";
 
 dotenv.config();
 
-// 🔥 Ajuste: Carregar firebase-service-account via variáveis de ambiente
+// 🔥 Configurar Firebase
 const serviceAccount = {
   type: process.env.FIREBASE_TYPE,
   project_id: process.env.FIREBASE_PROJECT_ID,
@@ -25,7 +30,6 @@ const serviceAccount = {
   universe_domain: process.env.FIREBASE_UNIVERSE_DOMAIN,
 };
 
-// Inicializa Firebase apenas se não estiver inicializado
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
@@ -34,15 +38,12 @@ if (!admin.apps.length) {
 
 const firestore = admin.firestore();
 
-// Configura Mercado Pago
 mercadopago.configure({
   access_token: process.env.MP_ACCESS_TOKEN,
 });
 
-// Configura SendGrid
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-// Configura OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -53,7 +54,6 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// ✅ Middleware de verificação da assinatura do Webhook
 function verificarAssinaturaMercadoPago(req, res, next) {
   const assinaturaRecebida = req.headers["x-signature"];
   const corpo = JSON.stringify(req.body);
@@ -72,7 +72,6 @@ function verificarAssinaturaMercadoPago(req, res, next) {
   next();
 }
 
-// 📬 Rota: Enviar e-mail
 app.post("/enviar-email", async (req, res) => {
   const { para, assunto, corpo } = req.body;
 
@@ -92,7 +91,6 @@ app.post("/enviar-email", async (req, res) => {
   }
 });
 
-// 🤖 Rota: Integração com OpenAI
 app.post("/api/openai", async (req, res) => {
   const { mensagem } = req.body;
 
@@ -104,16 +102,13 @@ app.post("/api/openai", async (req, res) => {
           role: "system",
           content: `
 Você é o assistente oficial da Hello Help. Sua missão é acolher o usuário, guiá-lo com inteligência, empatia e clareza para transformar habilidades em oportunidades reais de renda.
-
 🌟 Sempre incentive:
 - Fazer o teste de perfil
 - Cadastrar produtos e serviços
 - Explorar o marketplace
 - Falar com consultores
 - Buscar oportunidades
-
-Seja acolhedor, motivador, inteligente e gentil como a fundadora da Hello Help. Use emojis para tornar a conversa leve e inspiradora.
-`.trim(),
+Use emojis para tornar a conversa leve e inspiradora.`.trim(),
         },
         { role: "user", content: mensagem },
       ],
@@ -127,22 +122,13 @@ Seja acolhedor, motivador, inteligente e gentil como a fundadora da Hello Help. 
   }
 });
 
-// 💳 Rota: Criar link de pagamento Mercado Pago
 app.post("/api/criar-pagamento", async (req, res) => {
   const { titulo, preco, email } = req.body;
 
   try {
     const preference = {
-      items: [
-        {
-          title: titulo,
-          quantity: 1,
-          unit_price: parseFloat(preco),
-        },
-      ],
-      payer: {
-        email,
-      },
+      items: [{ title: titulo, quantity: 1, unit_price: parseFloat(preco) }],
+      payer: { email },
       back_urls: {
         success: `${process.env.CLIENT_URL}/pagamento-sucesso`,
         failure: `${process.env.CLIENT_URL}/pagamento-falha`,
@@ -159,24 +145,16 @@ app.post("/api/criar-pagamento", async (req, res) => {
   }
 });
 
-// 📓 Rota: Webhook Mercado Pago
 app.post("/api/pagamento-aprovado", verificarAssinaturaMercadoPago, async (req, res) => {
   const pagamento = req.body;
 
   console.log("📩 Notificação recebida:", JSON.stringify(pagamento, null, 2));
 
   try {
-    if (
-      pagamento.type === "payment" &&
-      pagamento.action === "payment.created" &&
-      pagamento.data?.id
-    ) {
+    if (pagamento.type === "payment" && pagamento.action === "payment.created" && pagamento.data?.id) {
       const pagamentoId = pagamento.data.id;
-
       const response = await fetch(`https://api.mercadopago.com/v1/payments/${pagamentoId}`, {
-        headers: {
-          Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`,
-        },
+        headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` },
       });
 
       const pagamentoInfo = await response.json();
@@ -185,8 +163,6 @@ app.post("/api/pagamento-aprovado", verificarAssinaturaMercadoPago, async (req, 
         const emailComprador = pagamentoInfo.payer.email;
         const valorPago = pagamentoInfo.transaction_amount;
         const planoComprado = pagamentoInfo.additional_info?.items?.[0]?.title || "Plano não identificado";
-
-        console.log(`✅ Pagamento confirmado: ${emailComprador} comprou ${planoComprado}`);
 
         const userRef = firestore.collection("usuariosPagantes").doc(emailComprador);
         await userRef.set({
@@ -197,18 +173,11 @@ app.post("/api/pagamento-aprovado", verificarAssinaturaMercadoPago, async (req, 
           dataPagamento: admin.firestore.Timestamp.now(),
         });
 
-        // Envia email de confirmação
         const msg = {
           to: emailComprador,
           from: "contatohellohelp@gmail.com",
           subject: "✅ Pagamento confirmado - Acesso liberado!",
-          html: `
-<p>Olá!</p>
-<p>Seu pagamento do plano <strong>${planoComprado}</strong> foi confirmado com sucesso.</p>
-<p>Agora você já pode acessar todas as funcionalidades premium da Hello Help! 🎉</p>
-<p>Acesse seu painel para começar!</p>
-<p>Equipe Hello Help 💙</p>
-          `,
+          html: `<p>Olá!</p><p>Seu pagamento do plano <strong>${planoComprado}</strong> foi confirmado com sucesso.</p><p>Agora você já pode acessar todas as funcionalidades premium da Hello Help! 🎉</p><p>Equipe Hello Help 💙</p>`,
         };
 
         await sgMail.send(msg);
@@ -223,12 +192,151 @@ app.post("/api/pagamento-aprovado", verificarAssinaturaMercadoPago, async (req, 
   }
 });
 
-// 🟢 Rota padrão: Keep Alive
 app.get("/", (req, res) => {
   res.send("✅ API Hello Help online!");
 });
 
-// 🚀 Inicializa o servidor
 app.listen(PORT, () => {
   console.log(`✅ Backend Hello Help rodando na porta ${PORT}`);
+  iniciarWhatsapp();
 });
+
+// 🔥 Disparador WhatsApp
+
+const delayEnvio = 10000;
+const diretorioAuth = './auth';
+const caminhoLista = './lista.json';
+const caminhoGrupos = './gruposPermitidos.json';
+const caminhoUsuariosEnviados = './usuariosEnviados.json';
+const mensagemEnvio = process.env.MENSAGEM_PADRAO || '🌟 Olá! Esta é uma mensagem oficial da Hello Help. Vamos transformar habilidades em oportunidades! 🚀';
+
+function esperar(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function carregarLista() {
+  if (!fs.existsSync(caminhoLista)) return [];
+  return JSON.parse(fs.readFileSync(caminhoLista, 'utf8'));
+}
+
+function carregarGrupos() {
+  if (!fs.existsSync(caminhoGrupos)) return [];
+  return JSON.parse(fs.readFileSync(caminhoGrupos, 'utf8'));
+}
+
+function carregarUsuariosEnviados() {
+  if (!fs.existsSync(caminhoUsuariosEnviados)) return [];
+  return JSON.parse(fs.readFileSync(caminhoUsuariosEnviados, 'utf8'));
+}
+
+function salvarUsuariosEnviados(lista) {
+  fs.writeFileSync(caminhoUsuariosEnviados, JSON.stringify(lista, null, 2));
+}
+
+async function enviarParaLista(sock) {
+  const lista = carregarLista();
+  let enviados = carregarUsuariosEnviados();
+  console.log(`📋 Enviando para ${lista.length} números.`);
+
+  for (const numero of lista) {
+    const jid = `${numero}@c.us`;
+    if (enviados.includes(jid)) continue;
+
+    try {
+      await sock.sendMessage(jid, { text: mensagemEnvio });
+      console.log(`✅ Mensagem enviada para: ${jid}`);
+      enviados.push(jid);
+      salvarUsuariosEnviados(enviados);
+    } catch (error) {
+      console.error(`❌ Erro ao enviar para ${jid}:`, error.message);
+    }
+
+    await esperar(delayEnvio);
+  }
+}
+
+async function enviarParaGrupos(sock) {
+  const grupos = carregarGrupos();
+  let enviados = carregarUsuariosEnviados();
+  console.log(`👥 Enviando mensagens para participantes dos grupos.`);
+
+  for (const grupoId of grupos) {
+    try {
+      const metadata = await sock.groupMetadata(grupoId);
+      const participantes = metadata.participants.map(p => p.id);
+
+      for (const participante of participantes) {
+        if (participante.endsWith('@g.us')) continue;
+        if (enviados.includes(participante)) continue;
+
+        try {
+          await sock.sendMessage(participante, { text: mensagemEnvio });
+          console.log(`✅ Mensagem enviada para participante: ${participante}`);
+          enviados.push(participante);
+          salvarUsuariosEnviados(enviados);
+        } catch (error) {
+          console.error(`❌ Erro ao enviar para participante ${participante}:`, error.message);
+        }
+
+        await esperar(delayEnvio);
+      }
+    } catch (error) {
+      console.error(`❌ Erro ao buscar grupo ${grupoId}:`, error.message);
+    }
+  }
+}
+
+async function iniciarWhatsapp() {
+  if (!fs.existsSync(diretorioAuth)) {
+    console.error('❌ Diretório de autenticação não encontrado.');
+    return;
+  }
+
+  const pastasAuth = fs.readdirSync(diretorioAuth).filter(f => fs.lstatSync(path.join(diretorioAuth, f)).isDirectory());
+
+  if (pastasAuth.length === 0) {
+    console.error('❌ Nenhuma autenticação disponível. Escaneie QR Code primeiro.');
+    return;
+  }
+
+  for (const nomeAuth of pastasAuth) {
+    const { state, saveCreds } = await useMultiFileAuthState(path.join(diretorioAuth, nomeAuth));
+    const { version } = await fetchLatestBaileysVersion();
+
+    const sock = makeWASocket({
+      version,
+      auth: state,
+      printQRInTerminal: true,
+    });
+
+    sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect } = update;
+      if (connection === 'open') {
+        console.log(`✅ Conectado com sucesso: ${nomeAuth}`);
+    
+        // 🔥 Só começar envio se realmente estiver conectado
+        try {
+          const listaNumeros = carregarLista();
+          const listaGrupos = carregarGrupos();
+    
+          if (listaNumeros.length === 0 && listaGrupos.length === 0) {
+            console.log("⚠️ Nenhum número ou grupo encontrado para envio.");
+          } else {
+            console.log("🚀 Iniciando envios para números e grupos...");
+            await enviarParaLista(sock);
+            await enviarParaGrupos(sock);
+          }
+        } catch (erroEnvio) {
+          console.error("❌ Erro durante envio automático:", erroEnvio.message);
+        }
+      } else if (connection === 'close') {
+        // reconectar se necessário
+        const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+        if (shouldReconnect) {
+          console.log('🔄 Tentando reconectar...');
+          iniciarWhatsapp();
+        }
+      }
+    });    
+  }
+}
