@@ -8,8 +8,8 @@ import { OpenAI } from "openai";
 import fetch from "node-fetch";
 import crypto from "crypto";
 import admin from "firebase-admin";
-import mercadopago from "mercadopago";
-import { makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } from '@whiskeysockets/baileys';
+import mercadopagoModule from "mercadopago"; // ✅ Correto
+import { makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } from "@whiskeysockets/baileys";
 import fs from "fs";
 import path from "path";
 
@@ -38,6 +38,8 @@ if (!admin.apps.length) {
 
 const firestore = admin.firestore();
 
+// ✅ Corrigido MercadoPago
+const mercadopago = mercadopagoModule.default || mercadopagoModule;
 mercadopago.configure({
   access_token: process.env.MP_ACCESS_TOKEN,
 });
@@ -54,24 +56,22 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// 🔒 Função para verificar webhook MercadoPago
 function verificarAssinaturaMercadoPago(req, res, next) {
   const assinaturaRecebida = req.headers["x-signature"];
   const corpo = JSON.stringify(req.body);
   const chaveSecreta = process.env.MP_WEBHOOK_SECRET;
 
-  const assinaturaCalculada = crypto
-    .createHmac("sha256", chaveSecreta)
-    .update(corpo)
-    .digest("hex");
+  const assinaturaCalculada = crypto.createHmac("sha256", chaveSecreta).update(corpo).digest("hex");
 
   if (assinaturaRecebida !== assinaturaCalculada) {
     console.warn("🚫 Webhook com assinatura inválida.");
     return res.status(403).json({ sucesso: false, mensagem: "Assinatura inválida." });
   }
-
   next();
 }
 
+// 📨 Envio de E-mail
 app.post("/enviar-email", async (req, res) => {
   const { para, assunto, corpo } = req.body;
 
@@ -91,6 +91,7 @@ app.post("/enviar-email", async (req, res) => {
   }
 });
 
+// 🤖 Envio para OpenAI
 app.post("/api/openai", async (req, res) => {
   const { mensagem } = req.body;
 
@@ -122,6 +123,7 @@ Use emojis para tornar a conversa leve e inspiradora.`.trim(),
   }
 });
 
+// 💵 Criar pagamento MercadoPago
 app.post("/api/criar-pagamento", async (req, res) => {
   const { titulo, preco, email } = req.body;
 
@@ -145,10 +147,9 @@ app.post("/api/criar-pagamento", async (req, res) => {
   }
 });
 
+// ✅ Pagamento aprovado
 app.post("/api/pagamento-aprovado", verificarAssinaturaMercadoPago, async (req, res) => {
   const pagamento = req.body;
-
-  console.log("📩 Notificação recebida:", JSON.stringify(pagamento, null, 2));
 
   try {
     if (pagamento.type === "payment" && pagamento.action === "payment.created" && pagamento.data?.id) {
@@ -156,7 +157,6 @@ app.post("/api/pagamento-aprovado", verificarAssinaturaMercadoPago, async (req, 
       const response = await fetch(`https://api.mercadopago.com/v1/payments/${pagamentoId}`, {
         headers: { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}` },
       });
-
       const pagamentoInfo = await response.json();
 
       if (pagamentoInfo.status === "approved") {
@@ -184,7 +184,6 @@ app.post("/api/pagamento-aprovado", verificarAssinaturaMercadoPago, async (req, 
         return res.status(200).json({ sucesso: true, mensagem: "Plano ativado com sucesso." });
       }
     }
-
     return res.status(400).json({ sucesso: false, mensagem: "Pagamento não aprovado ou evento inválido." });
   } catch (error) {
     console.error("❌ Erro no processamento do pagamento:", error.message);
@@ -192,23 +191,25 @@ app.post("/api/pagamento-aprovado", verificarAssinaturaMercadoPago, async (req, 
   }
 });
 
+// 🌐 Teste de servidor
 app.get("/", (req, res) => {
   res.send("✅ API Hello Help online!");
 });
 
+// 🚀 Iniciar o servidor
 app.listen(PORT, () => {
   console.log(`✅ Backend Hello Help rodando na porta ${PORT}`);
   iniciarWhatsapp();
 });
 
-// 🔥 Disparador WhatsApp
+// 🔥 WhatsApp Disparador
 
 const delayEnvio = 10000;
 const diretorioAuth = './auth';
 const caminhoLista = './lista.json';
 const caminhoGrupos = './gruposPermitidos.json';
 const caminhoUsuariosEnviados = './usuariosEnviados.json';
-const mensagemEnvio = process.env.MENSAGEM_PADRAO || '🌟 Olá! Esta é uma mensagem oficial da Hello Help. Vamos transformar habilidades em oportunidades! 🚀';
+const mensagemEnvio = process.env.MENSAGEM_PADRAO || "🌟 Olá! Esta é uma mensagem oficial da Hello Help. Vamos transformar habilidades em oportunidades! 🚀";
 
 function esperar(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -241,7 +242,6 @@ async function enviarParaLista(sock) {
   for (const numero of lista) {
     const jid = `${numero}@c.us`;
     if (enviados.includes(jid)) continue;
-
     try {
       await sock.sendMessage(jid, { text: mensagemEnvio });
       console.log(`✅ Mensagem enviada para: ${jid}`);
@@ -250,7 +250,6 @@ async function enviarParaLista(sock) {
     } catch (error) {
       console.error(`❌ Erro ao enviar para ${jid}:`, error.message);
     }
-
     await esperar(delayEnvio);
   }
 }
@@ -268,7 +267,6 @@ async function enviarParaGrupos(sock) {
       for (const participante of participantes) {
         if (participante.endsWith('@g.us')) continue;
         if (enviados.includes(participante)) continue;
-
         try {
           await sock.sendMessage(participante, { text: mensagemEnvio });
           console.log(`✅ Mensagem enviada para participante: ${participante}`);
@@ -277,7 +275,6 @@ async function enviarParaGrupos(sock) {
         } catch (error) {
           console.error(`❌ Erro ao enviar para participante ${participante}:`, error.message);
         }
-
         await esperar(delayEnvio);
       }
     } catch (error) {
@@ -288,14 +285,14 @@ async function enviarParaGrupos(sock) {
 
 async function iniciarWhatsapp() {
   if (!fs.existsSync(diretorioAuth)) {
-    console.error('❌ Diretório de autenticação não encontrado.');
+    console.error("❌ Diretório de autenticação não encontrado.");
     return;
   }
 
   const pastasAuth = fs.readdirSync(diretorioAuth).filter(f => fs.lstatSync(path.join(diretorioAuth, f)).isDirectory());
 
   if (pastasAuth.length === 0) {
-    console.error('❌ Nenhuma autenticação disponível. Escaneie QR Code primeiro.');
+    console.error("❌ Nenhuma autenticação disponível. Escaneie QR Code primeiro.");
     return;
   }
 
@@ -309,34 +306,30 @@ async function iniciarWhatsapp() {
       printQRInTerminal: true,
     });
 
-    sock.ev.on('connection.update', async (update) => {
+    sock.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect } = update;
-      if (connection === 'open') {
+      if (connection === "open") {
         console.log(`✅ Conectado com sucesso: ${nomeAuth}`);
-    
-        // 🔥 Só começar envio se realmente estiver conectado
         try {
           const listaNumeros = carregarLista();
           const listaGrupos = carregarGrupos();
-    
           if (listaNumeros.length === 0 && listaGrupos.length === 0) {
             console.log("⚠️ Nenhum número ou grupo encontrado para envio.");
           } else {
-            console.log("🚀 Iniciando envios para números e grupos...");
+            console.log("🚀 Iniciando envios...");
             await enviarParaLista(sock);
             await enviarParaGrupos(sock);
           }
         } catch (erroEnvio) {
           console.error("❌ Erro durante envio automático:", erroEnvio.message);
         }
-      } else if (connection === 'close') {
-        // reconectar se necessário
+      } else if (connection === "close") {
         const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
         if (shouldReconnect) {
-          console.log('🔄 Tentando reconectar...');
+          console.log("🔄 Tentando reconectar...");
           iniciarWhatsapp();
         }
       }
-    });    
+    });
   }
 }
