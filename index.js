@@ -1,11 +1,12 @@
-const express = require("express");
-const cors = require("cors");
-const dotenv = require("dotenv");
-const sgMail = require("@sendgrid/mail");
-const { OpenAI } = require("openai");
-const fetch = require("node-fetch");
-const crypto = require("crypto");
-const admin = require("firebase-admin");
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
+import sgMail from "@sendgrid/mail";
+import { OpenAI } from "openai";
+import fetch from "node-fetch";
+import crypto from "crypto";
+import admin from "firebase-admin";
+import mercadopago from "mercadopago";
 
 dotenv.config();
 
@@ -14,7 +15,7 @@ const serviceAccount = {
   type: process.env.FIREBASE_TYPE,
   project_id: process.env.FIREBASE_PROJECT_ID,
   private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
-  private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+  private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
   client_email: process.env.FIREBASE_CLIENT_EMAIL,
   client_id: process.env.FIREBASE_CLIENT_ID,
   auth_uri: process.env.FIREBASE_AUTH_URI,
@@ -24,15 +25,16 @@ const serviceAccount = {
   universe_domain: process.env.FIREBASE_UNIVERSE_DOMAIN,
 };
 
-// Inicializa Firebase
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
+// Inicializa Firebase apenas se não estiver inicializado
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+}
 
 const firestore = admin.firestore();
 
-const mercadopago = require("mercadopago");
-
+// Configura Mercado Pago
 mercadopago.configure({
   access_token: process.env.MP_ACCESS_TOKEN,
 });
@@ -70,9 +72,7 @@ function verificarAssinaturaMercadoPago(req, res, next) {
   next();
 }
 
-/**
- * 📬 Envia e-mail
- */
+// 📬 Rota: Enviar e-mail
 app.post("/enviar-email", async (req, res) => {
   const { para, assunto, corpo } = req.body;
 
@@ -87,14 +87,12 @@ app.post("/enviar-email", async (req, res) => {
     await sgMail.send(msg);
     res.status(200).json({ sucesso: true, mensagem: "Email enviado com sucesso!" });
   } catch (error) {
-    console.error("Erro ao enviar email:", error.response?.body || error);
+    console.error("Erro ao enviar email:", error.response?.body || error.message);
     res.status(500).json({ sucesso: false, mensagem: "Erro ao enviar email." });
   }
 });
 
-/**
- * 🤖 Integração OpenAI
- */
+// 🤖 Rota: Integração com OpenAI
 app.post("/api/openai", async (req, res) => {
   const { mensagem } = req.body;
 
@@ -107,17 +105,15 @@ app.post("/api/openai", async (req, res) => {
           content: `
 Você é o assistente oficial da Hello Help. Sua missão é acolher o usuário, guiá-lo com inteligência, empatia e clareza para transformar habilidades em oportunidades reais de renda.
 
-🌟 Sempre que possível, incentive:
+🌟 Sempre incentive:
 - Fazer o teste de perfil
 - Cadastrar produtos e serviços
 - Explorar o marketplace
 - Falar com consultores
-- Acessar oportunidades
+- Buscar oportunidades
 
-🌟 Responda também perguntas gerais sobre qualquer assunto, com foco em educação, criatividade e acolhimento. Incentive o crescimento pessoal, profissional, financeiro e espiritual.
-
-Seja como a fundadora da Hello Help: inspirador, motivador, inteligente, gentil e com visão de impacto social. Use emojis para tornar a conversa leve e acessível.
-          `.trim(),
+Seja acolhedor, motivador, inteligente e gentil como a fundadora da Hello Help. Use emojis para tornar a conversa leve e inspiradora.
+`.trim(),
         },
         { role: "user", content: mensagem },
       ],
@@ -126,14 +122,12 @@ Seja como a fundadora da Hello Help: inspirador, motivador, inteligente, gentil 
     const respostaIA = resposta.choices[0]?.message?.content;
     res.json({ resposta: respostaIA || "Resposta vazia da IA." });
   } catch (error) {
-    console.error("Erro ao chamar IA:", error?.response?.data || error.message);
+    console.error("Erro ao chamar IA:", error.response?.data || error.message);
     res.status(500).json({ resposta: "Erro ao tentar responder com a IA." });
   }
 });
 
-/**
- * 💳 Criar link de pagamento
- */
+// 💳 Rota: Criar link de pagamento Mercado Pago
 app.post("/api/criar-pagamento", async (req, res) => {
   const { titulo, preco, email } = req.body;
 
@@ -147,12 +141,12 @@ app.post("/api/criar-pagamento", async (req, res) => {
         },
       ],
       payer: {
-        email: email,
+        email,
       },
       back_urls: {
-        success: process.env.CLIENT_URL + "/pagamento-sucesso",
-        failure: process.env.CLIENT_URL + "/pagamento-falha",
-        pending: process.env.CLIENT_URL + "/pagamento-pendente",
+        success: `${process.env.CLIENT_URL}/pagamento-sucesso`,
+        failure: `${process.env.CLIENT_URL}/pagamento-falha`,
+        pending: `${process.env.CLIENT_URL}/pagamento-pendente`,
       },
       auto_return: "approved",
     };
@@ -160,14 +154,12 @@ app.post("/api/criar-pagamento", async (req, res) => {
     const resultado = await mercadopago.preferences.create(preference);
     res.status(200).json({ url: resultado.body.init_point });
   } catch (error) {
-    console.error("Erro ao criar pagamento:", error);
+    console.error("Erro ao criar pagamento:", error.message);
     res.status(500).json({ erro: "Erro ao criar pagamento." });
   }
 });
 
-/**
- * 📓 Webhook Mercado Pago
- */
+// 📓 Rota: Webhook Mercado Pago
 app.post("/api/pagamento-aprovado", verificarAssinaturaMercadoPago, async (req, res) => {
   const pagamento = req.body;
 
@@ -205,17 +197,17 @@ app.post("/api/pagamento-aprovado", verificarAssinaturaMercadoPago, async (req, 
           dataPagamento: admin.firestore.Timestamp.now(),
         });
 
+        // Envia email de confirmação
         const msg = {
           to: emailComprador,
           from: "contatohellohelp@gmail.com",
           subject: "✅ Pagamento confirmado - Acesso liberado!",
           html: `
-            <p>Olá!</p>
-            <p>Seu pagamento do plano <strong>${planoComprado}</strong> foi confirmado com sucesso.</p>
-            <p>Você já pode acessar todas as funcionalidades premium da Hello Help! 🎉</p>
-            <br/>
-            <p>Abra seu painel e aproveite 😉</p>
-            <p>Equipe Hello Help</p>
+<p>Olá!</p>
+<p>Seu pagamento do plano <strong>${planoComprado}</strong> foi confirmado com sucesso.</p>
+<p>Agora você já pode acessar todas as funcionalidades premium da Hello Help! 🎉</p>
+<p>Acesse seu painel para começar!</p>
+<p>Equipe Hello Help 💙</p>
           `,
         };
 
@@ -226,12 +218,12 @@ app.post("/api/pagamento-aprovado", verificarAssinaturaMercadoPago, async (req, 
 
     return res.status(400).json({ sucesso: false, mensagem: "Pagamento não aprovado ou evento inválido." });
   } catch (error) {
-    console.error("❌ Erro no processamento:", error.message);
+    console.error("❌ Erro no processamento do pagamento:", error.message);
     return res.status(500).json({ sucesso: false, mensagem: "Erro interno ao processar pagamento." });
   }
 });
 
-// 🟢 Rota padrão para manter o Render ativo
+// 🟢 Rota padrão: Keep Alive
 app.get("/", (req, res) => {
   res.send("✅ API Hello Help online!");
 });
