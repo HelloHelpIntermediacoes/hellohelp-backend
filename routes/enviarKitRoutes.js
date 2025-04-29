@@ -14,7 +14,7 @@ const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ✅ Configura SendGrid
+// ✅ Configuração do SendGrid
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 // ✅ Firestore (Banco de dados)
@@ -70,18 +70,19 @@ router.post("/", async (req, res) => {
   const { usuario } = req.body;
 
   if (!usuario || !usuario.email || !usuario.nome || !(usuario.id || usuario.uid)) {
+    console.error("❌ Erro: Dados do usuário incompletos.", usuario);
     return res.status(400).json({ success: false, message: "❌ Dados do usuário incompletos." });
   }
 
   const userId = usuario.id || usuario.uid;
+  const nomeArquivo = `Kit_HelloHelp_${userId}.pdf`.replace(/[^\w.-]/g, "_");
+  const pdfPath = path.join(__dirname, "..", "banco", nomeArquivo);
 
   try {
     // 📄 Gera o PDF
-    const nomeArquivo = `Kit_HelloHelp_${userId}.pdf`.replace(/[^\w.-]/g, "_");
-    const pdfPath = path.join(__dirname, "..", "banco", nomeArquivo);
     await gerarPDF(usuario, pdfPath);
 
-    // ✉️ Monta e envia o e-mail
+    // ✉️ Monta o e-mail
     const msg = {
       to: usuario.email,
       from: "contatohellohelp@gmail.com",
@@ -122,21 +123,41 @@ router.post("/", async (req, res) => {
       ],
     };
 
+    // 🚀 Envia o e-mail
     await sgMail.send(msg);
 
-    // 🔄 Atualiza status no Firestore
+    // ✅ Atualiza status no Firestore
     await db.collection("usuariosHelloHelp").doc(userId).update({
       statusKit: "enviado",
       kitEnviadoEm: new Date().toISOString(),
-      mensagemInicial: `Olá ${usuario.nome}, seu consultor está disponível para te orientar. Deseja começar agora?`
+      mensagemInicial: `Olá ${usuario.nome}, seu consultor está disponível para te orientar. Deseja começar agora?`,
     });
 
-    console.log(`✅ Kit enviado para ${usuario.nome} (${usuario.email})`);
-    res.status(200).json({ success: true, message: "Kit enviado com sucesso!" });
+    console.log(`✅ Kit enviado com sucesso para ${usuario.nome} (${usuario.email})`);
+
+    // 🧹 Deleta o PDF após o envio para limpar o servidor
+    fs.unlink(pdfPath, (err) => {
+      if (err) {
+        console.warn("⚠️ Não foi possível deletar o PDF temporário:", err);
+      } else {
+        console.log("🗑️ PDF temporário deletado com sucesso.");
+      }
+    });
+
+    return res.status(200).json({ success: true, message: "Kit enviado com sucesso!" });
 
   } catch (error) {
-    console.error("❌ Erro ao enviar kit:", error);
-    res.status(500).json({ success: false, message: "Erro ao enviar o kit." });
+    console.error("❌ Erro geral ao enviar kit:", error);
+
+    // 🧹 Se der erro, tenta apagar o PDF também
+    fs.unlink(pdfPath, (err) => {
+      if (err) console.warn("⚠️ Falha ao tentar apagar PDF depois de erro:", err);
+    });
+
+    return res.status(500).json({
+      success: false,
+      message: `Erro ao enviar o kit: ${error.message || error.toString()}`,
+    });
   }
 });
 

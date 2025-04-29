@@ -85,7 +85,7 @@ app.get("/api/produtos", (req, res) => {
 });
 
 // Envio de e-mail genérico
-app.post("/enviar-email", async (req, res) => {
+app.post("/EnviarEmail", async (req, res) => {
   const { para, assunto, corpo } = req.body;
   const msg = {
     to: para,
