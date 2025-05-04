@@ -27,6 +27,8 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use("/", rotaQRCode);
 app.use(cors()); //
+const enviarMensagemRoutes = require('./routes/enviarMensagem');
+app.use('/enviarMensagem', enviarMensagemRoutes);
 const PORT = process.env.PORT || 3001;
 
 // 🔥 Firebase config
