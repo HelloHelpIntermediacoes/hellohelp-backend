@@ -1,4 +1,4 @@
-// ✅ index.js COMPLETO E FUNCIONAL
+// ✅ index.js corrigido e funcional com ESModules
 import express from "express";
 import cors from "cors";
 import sgMail from "@sendgrid/mail";
@@ -12,25 +12,36 @@ import fs from "fs";
 import PDFDocument from "pdfkit";
 import stream from "stream";
 import { fileURLToPath } from "url";
-import { criarPreferencia } from "./services/PagamentoService.js";
-import { iniciarDisparo } from "./routes/controlls/disparoController.js";
 import dotenv from "dotenv";
 import pkg from "whatsapp-web.js";
 import qrcode from "qrcode";
-import rotaQRCode from "./routes/qrcode-disparador.js";
 
-const { Client, LocalAuth } = pkg;
+// ✅ Importações de serviços e rotas
+import { criarPreferencia } from "./services/PagamentoService.js";
+import { iniciarDisparo } from "./routes/controller/disparoController.js";
+import statusRoutes from "./routes/statusRoutes.js";
+import rotaQRCode from "./routes/qrcode-disparador.js";
+import enviarMensagemRoutes from "./routes/enviarMensagem.js";
+import discarRoute from "./routes/discar.js";
+
 dotenv.config();
-console.log("✅ Access Token carregado:", process.env.MP_ACCESS_TOKEN);
+const { Client, LocalAuth } = pkg;
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const app = express();
-app.use("/", rotaQRCode);
-app.use(cors()); //
-const enviarMensagemRoutes = require('./routes/enviarMensagem');
-app.use('/enviarMensagem', enviarMensagemRoutes);
-const PORT = process.env.PORT || 3001;
 
+const app = express();
+const PORT = process.env.PORT || 3001; // ✅ CORRIGIDO aqui, antes de usar no app.listen()
+
+app.use(cors({
+  origin: ["http://localhost:5173", "https://hellohelp.com.br"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+}));
+
+app.use(express.json());
+app.use("/midia", express.static(path.join(__dirname, "midia")));
 // 🔥 Firebase config
 const serviceAccount = {
   type: process.env.FIREBASE_TYPE,
@@ -59,11 +70,11 @@ sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 // 🧠 OpenAI
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// WhatsApp cliente
 const client = new Client({
-  authStrategy: new LocalAuth(),
+  authStrategy: new LocalAuth({ clientId: "hellohelp" }),
   puppeteer: { headless: true },
 });
+
 
 // Geração de QR Code
 client.on("qr", (qr) => {
@@ -104,6 +115,7 @@ app.get("/", (req, res) => {
 });
 
 // ✅ ROTA: Enviar e-mail simples
+// ✅ ROTA: Enviar e-mail simples com SendGrid
 app.post("/EnviarEmail", async (req, res) => {
   const { para, assunto, corpo } = req.body;
   const msg = {
@@ -120,29 +132,38 @@ app.post("/EnviarEmail", async (req, res) => {
     res.status(500).json({ sucesso: false, mensagem: "Erro ao enviar email." });
   }
 });
-// 🛡️ Permitir requisições do domínio do seu frontend
+
+// ✅ Configuração de CORS para frontend da Hello Help
 app.use(cors({
-  origin: 'https://hellohelp.com.br', // ou use '*' apenas para testes
+  origin: 'https://hellohelp.com.br', // libere somente seu domínio em produção
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type'],
 }));
 
+// ✅ Middleware necessário para processar JSON
 app.use(express.json());
+
+// ⚠️ INÍCIO DA ROTA DUPLICADA (precisa comentar ou remover o trecho abaixo para evitar conflito!)
+/*
+const express = require("express");
+const app = express();
+const whatsappRoutes = require("./routes/whatsapp");
+
+app.use(express.json());
+app.use("/", whatsappRoutes);
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
+*/
+// ⚠️ FIM DO TRECHO DUPLICADO — ESSE CÓDIGO NÃO DEVE ESTAR AQUI POIS O SERVIDOR JÁ FOI INICIADO ANTES!
+
+// ✅ ROTA DE ENVIO DE KIT COM PDF VIA EMAIL
 app.post("/EnviarKit", async (req, res) => {
   const { nome, email, perfil } = req.body;
 
   if (!nome || !email || !perfil) {
     return res.status(400).json({ erro: "Dados incompletos para envio do kit." });
   }
-  const express = require("express");
-  const app = express();
-  const whatsappRoutes = require("./routes/whatsapp");
-  
-  app.use(express.json());
-  app.use("/", whatsappRoutes);
-  
-  const PORT = process.env.PORT || 3001;
-  app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
 
   try {
     // 🧾 Gerar PDF
@@ -330,7 +351,8 @@ app.post("/api/pagamento-aprovado", (req, res) => {
 
 // ✅ ROTA: Disparo de mensagens
 app.post("/disparar-mensagens", async (req, res) => {
-  const diretorioAuth = path.join(__dirname, "auth", "numero1@app"); // ajuste conforme nome da pasta
+  const diretorioAuth = path.join(__dirname, ".wwebjs_auth");
+// ajuste conforme nome da pasta
   console.log("🔍 Verificando diretório:", diretorioAuth);
 
   if (!fs.existsSync(diretorioAuth)) {
@@ -450,7 +472,9 @@ async function iniciarWhatsapp() {
     return;
   }
 
-  const pastasAuth = fs.readdirSync(diretorioAuth).filter(f => fs.lstatSync(path.join(diretorioAuth, f)).isDirectory());
+  const pastasAuth = fs.readdirSync(diretorioAuth).filter(f =>
+    fs.lstatSync(path.join(diretorioAuth, f)).isDirectory()
+  );
 
   if (pastasAuth.length === 0) {
     console.error('❌ Nenhuma autenticação disponível. Escaneie QR Code primeiro.');
@@ -459,12 +483,52 @@ async function iniciarWhatsapp() {
 
   for (const nomeAuth of pastasAuth) {
     const { state, saveCreds } = await useMultiFileAuthState(path.join(diretorioAuth, nomeAuth));
-    const { version } = await fetchLatestBaileysVersion();
+
+    // 🔐 Proteção contra erro de versão nula
+    const resultadoVersao = await fetchLatestBaileysVersion();
+    if (!resultadoVersao || !Array.isArray(resultadoVersao.version)) {
+      console.error("❌ Versão inválida do Baileys.");
+      continue;
+    }
+
+    const version = resultadoVersao.version;
+
     const sock = makeWASocket({
       version,
       auth: state,
       printQRInTerminal: true,
     });
+
+    sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect } = update;
+
+      if (connection === 'open') {
+        console.log(`✅ Conectado: ${nomeAuth}`);
+        try {
+          const listaNumeros = carregarLista();
+          const listaGrupos = carregarGrupos();
+
+          if (listaNumeros.length === 0 && listaGrupos.length === 0) {
+            console.log("⚠️ Nenhum número ou grupo encontrado para envio.");
+          } else {
+            console.log("🚀 Iniciando envio automático...");
+            await enviarParaLista(sock);
+            await enviarParaGrupos(sock);
+          }
+        } catch (erroEnvio) {
+          console.error("❌ Erro envio automático:", erroEnvio.message);
+        }
+      } else if (connection === 'close') {
+        const shouldReconnect =
+          lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+        if (shouldReconnect) {
+          console.log('🔄 Tentando reconectar...');
+          iniciarWhatsapp(); // ⚠️ Recursivo
+        }
+      }
+    });
+
+    sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect } = update;
@@ -490,7 +554,6 @@ async function iniciarWhatsapp() {
           
           
           iniciarWhatsapp();
-          
         }
       }
     });

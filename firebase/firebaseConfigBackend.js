@@ -1,6 +1,13 @@
-// firebase/firebaseConfigBackend.js
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import admin from "firebase-admin";
-import serviceAccount from "./firebase-service-account.json" assert { type: "json" }; // sua chave baixada do Firebase
+
+// Constrói caminho absoluto até o JSON
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const jsonPath = path.join(__dirname, "./firebase-service-account.json");
+const serviceAccount = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -9,5 +16,4 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
-
 export { db };

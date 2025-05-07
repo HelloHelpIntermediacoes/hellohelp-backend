@@ -3,6 +3,7 @@
     "version": "1.0.0",
     "description": "Servidor backend da Hello Help",
     "main": "index.js",
+    "type": "module",
     "scripts": {
         "start": "node index.js",
         "dev": "nodemon index.js"
@@ -19,14 +20,15 @@
         "mercadopago": "^2.5.0",
         "node-fetch": "^2.7.0",
         "openai": "^4.97.0",
+        "papaparse": "^5.5.2",
         "pdf-lib": "^1.17.1",
         "pdfkit": "^0.17.1",
-        "puppeteer-core": "^19.7.5",
+        "puppeteer-core": "^24.8.1",
         "qrcode": "^1.5.4",
         "qrcode-terminal": "^0.12.0",
-        "sweetalert2": "^11.19.1",
+        "sweetalert2": "^11.6.13",
         "uuid": "^11.1.0",
-        "whatsapp-web.js": "^1.27.0"
+        "whatsapp-web.js": "^1.18.4"
     },
     "devDependencies": {
         "nodemon": "^3.1.9"
