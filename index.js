@@ -18,6 +18,7 @@ import qrcode from "qrcode";
 
 // ✅ Importações de serviços e rotas
 import { criarPreferencia } from "./services/PagamentoService.js";
+
 import { iniciarDisparo } from "./routes/controller/disparoController.js";
 import statusRoutes from "./routes/statusRoutes.js";
 import rotaQRCode from "./routes/qrcode-disparador.js";
