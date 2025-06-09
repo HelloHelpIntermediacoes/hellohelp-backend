@@ -144,19 +144,6 @@ app.use(cors({
 // ✅ Middleware necessário para processar JSON
 app.use(express.json());
 
-// ⚠️ INÍCIO DA ROTA DUPLICADA (precisa comentar ou remover o trecho abaixo para evitar conflito!)
-/*
-const express = require("express");
-const app = express();
-const whatsappRoutes = require("./routes/whatsapp");
-
-app.use(express.json());
-app.use("/", whatsappRoutes);
-
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
-*/
-// ⚠️ FIM DO TRECHO DUPLICADO — ESSE CÓDIGO NÃO DEVE ESTAR AQUI POIS O SERVIDOR JÁ FOI INICIADO ANTES!
 
 // ✅ ROTA DE ENVIO DE KIT COM PDF VIA EMAIL
 app.post("/EnviarKit", async (req, res) => {
